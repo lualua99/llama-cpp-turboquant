@@ -6,6 +6,9 @@ name: CI (CUDA, windows)
 #       this can be used before merging a PR to speed up the release workflow
 on:
   workflow_dispatch: # allows manual triggering
+  # 如果你也想在push时触发，可以取消注释下面这行
+  # push:
+  #   branches: [ master, main ]
 
 # note: this will run in queue with the release workflow
 concurrency:
@@ -26,6 +29,7 @@ jobs:
 
     permissions:
       actions: write
+      contents: write  # 添加这个权限以便上传到release
 
     strategy:
       matrix:
@@ -70,6 +74,31 @@ jobs:
           cmake --build build --config Release -j %NINJA_JOBS% -t ggml
           cmake --build build --config Release
 
+      # 上传为Artifact（用于临时存储，可在Actions页面下载）
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-windows-cuda-${{ matrix.cuda }}
+          path: |
+            build/bin/Release/*.exe
+            build/bin/Release/*.dll
+          retention-days: 30  # 保留30天
+
+      # 可选：直接发布到GitHub Release
+      - name: Create Release and Upload
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-cuda-${{ matrix.cuda }}-${{ github.run_number }}
+          name: Nightly CUDA ${{ matrix.cuda }} Build
+          prerelease: true
+          files: |
+            build/bin/Release/*.exe
+            build/bin/Release/*.dll
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
         with:
@@ -80,6 +109,7 @@ jobs:
 
     permissions:
       actions: write
+      contents: write  # 添加这个权限以便上传到release
 
     env:
       # Make sure this is in sync with build-cache.yml
@@ -154,6 +184,31 @@ jobs:
             -DGPU_TARGETS="gfx1100"  `
             -DGGML_RPC=ON
           cmake --build build -j ${env:NUMBER_OF_PROCESSORS}
+
+      # 上传为Artifact
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-windows-hip-${{ matrix.name }}
+          path: |
+            build/bin/*.exe
+            build/bin/*.dll
+          retention-days: 30
+
+      # 可选：直接发布到GitHub Release
+      - name: Create Release and Upload
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly-hip-${{ matrix.name }}-${{ github.run_number }}
+          name: Nightly HIP ${{ matrix.name }} Build
+          prerelease: true
+          files: |
+            build/bin/*.exe
+            build/bin/*.dll
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ccache-clear
         uses: ./.github/actions/ccache-clear
